@@ -26,7 +26,9 @@ jobs:
     
     - name: Prepare master libnx
       run: |
+        # Pinned: newer libnx renamed pgl functions that Atmosphere-libs still uses
         git clone https://github.com/switchbrew/libnx
+        git -C libnx checkout dbcc1beafc6b47b5ffbeb8ba82463a7d45da40bb
         make -C libnx/
         cp -r libnx/nx/external/bsd/include libnx/nx
     
