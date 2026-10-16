@@ -23,6 +23,16 @@ namespace ul::menu {
         return fs::JoinPath(menu_path, HiddenMenuDirName);
     }
 
+    // Optional parental PIN guarding a user's hidden games.
+    // Stored next to that user's menu as a salted SHA-256 hash: the PIN itself is never written to the SD card.
+    constexpr size_t HiddenGamesPinMinLength = 4;
+    constexpr size_t HiddenGamesPinMaxLength = 8;
+
+    bool HasHiddenGamesPin(const std::string &menu_path);
+    void SetHiddenGamesPin(const std::string &menu_path, const std::string &pin);
+    bool CheckHiddenGamesPin(const std::string &menu_path, const std::string &pin);
+    void RemoveHiddenGamesPin(const std::string &menu_path);
+
     enum class EntryType : u32 {
         Invalid,
         Application,

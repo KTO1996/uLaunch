@@ -49,6 +49,109 @@ namespace ul::menu::ui {
         char g_MenuFsPathBuffer[FS_MAX_PATH] = {};
         char g_MenuPathBuffer[FS_MAX_PATH] = {};
 
+        // ---- Hidden games PIN ----
+
+        // After this many wrong PINs in a row, refuse further tries for a while (stops a child guessing all 10,000 4-digit PINs)
+        constexpr u32 HiddenPinMaxFailedAttempts = 5;
+        constexpr u64 HiddenPinLockoutSeconds = 60;
+
+        u32 g_HiddenPinFailedAttempts = 0;
+        u64 g_HiddenPinLockoutEndTick = 0;
+
+        // Shows the system number pad with masked digits. Returns false if the user cancelled.
+        bool AskHiddenGamesPin(const std::string &guide_text, std::string &out_pin) {
+            SwkbdConfig swkbd;
+            UL_RC_ASSERT(swkbdCreate(&swkbd, 0));
+            swkbdConfigMakePresetPassword(&swkbd);
+            swkbdConfigSetType(&swkbd, SwkbdType_NumPad);
+            swkbdConfigSetStringLenMin(&swkbd, HiddenGamesPinMinLength);
+            swkbdConfigSetStringLenMax(&swkbd, HiddenGamesPinMaxLength);
+            swkbdConfigSetGuideText(&swkbd, guide_text.c_str());
+
+            char pin_buf[HiddenGamesPinMaxLength + 8] = {};
+            const auto rc = ShowSwkbd(&swkbd, pin_buf, sizeof(pin_buf));
+            swkbdClose(&swkbd);
+
+            out_pin = pin_buf;
+            return R_SUCCEEDED(rc) && (out_pin.length() >= HiddenGamesPinMinLength);
+        }
+
+        // True if this user's hidden games may be opened right now (no PIN set, or the right PIN was entered)
+        bool UnlockHiddenGames() {
+            const auto &menu_path = GetActiveMenuPath();
+            if(!HasHiddenGamesPin(menu_path)) {
+                return true;
+            }
+
+            if(armGetSystemTick() < g_HiddenPinLockoutEndTick) {
+                g_MenuApplication->ShowNotification(GetLanguageString("hidden_pin_locked_out"));
+                return false;
+            }
+
+            std::string pin;
+            if(!AskHiddenGamesPin(GetLanguageString("hidden_pin_enter"), pin)) {
+                return false;
+            }
+
+            if(CheckHiddenGamesPin(menu_path, pin)) {
+                g_HiddenPinFailedAttempts = 0;
+                return true;
+            }
+
+            g_HiddenPinFailedAttempts++;
+            if(g_HiddenPinFailedAttempts >= HiddenPinMaxFailedAttempts) {
+                g_HiddenPinFailedAttempts = 0;
+                g_HiddenPinLockoutEndTick = armGetSystemTick() + armNsToTicks(HiddenPinLockoutSeconds * 1'000'000'000ul);
+                g_MenuApplication->ShowNotification(GetLanguageString("hidden_pin_locked_out"));
+            }
+            else {
+                g_MenuApplication->ShowNotification(GetLanguageString("hidden_pin_wrong"));
+            }
+            return false;
+        }
+
+        // Asks for a new PIN twice and saves it if both match
+        void SetNewHiddenGamesPin() {
+            std::string pin;
+            if(!AskHiddenGamesPin(GetLanguageString("hidden_pin_new"), pin)) {
+                return;
+            }
+
+            std::string pin_confirm;
+            if(!AskHiddenGamesPin(GetLanguageString("hidden_pin_confirm"), pin_confirm)) {
+                return;
+            }
+
+            if(pin != pin_confirm) {
+                g_MenuApplication->ShowNotification(GetLanguageString("hidden_pin_mismatch"));
+                return;
+            }
+
+            SetHiddenGamesPin(GetActiveMenuPath(), pin);
+            g_MenuApplication->ShowNotification(GetLanguageString("hidden_pin_set_ok"));
+        }
+
+        // Shown from an empty slot inside the hidden games view (so the PIN was already entered to get here)
+        void ShowHiddenGamesPinOptions() {
+            const auto has_pin = HasHiddenGamesPin(GetActiveMenuPath());
+            if(has_pin) {
+                const auto option = g_MenuApplication->DisplayDialog(GetLanguageString("hidden_pin_title"), GetLanguageString("hidden_pin_info_set"), { GetLanguageString("hidden_pin_change"), GetLanguageString("hidden_pin_remove"), GetLanguageString("cancel") }, true);
+                if(option == 0) {
+                    SetNewHiddenGamesPin();
+                }
+                else if(option == 1) {
+                    RemoveHiddenGamesPin(GetActiveMenuPath());
+                    g_MenuApplication->ShowNotification(GetLanguageString("hidden_pin_remove_ok"));
+                }
+            }
+            else {
+                const auto option = g_MenuApplication->DisplayDialog(GetLanguageString("hidden_pin_title"), GetLanguageString("hidden_pin_info_unset"), { GetLanguageString("hidden_pin_set"), GetLanguageString("cancel") }, true);
+                if(option == 0) {
+                    SetNewHiddenGamesPin();
+                }
+            }
+        }
+
     }
 
     void MainMenuLayout::DoMoveTo(const std::string &new_path) {
@@ -315,7 +418,11 @@ namespace ul::menu::ui {
                         // Should not happen...
                     }
                 }
-                else if(!this->entry_menu->IsInHiddenView()) {
+                else if(this->entry_menu->IsInHiddenView()) {
+                    // Inside the hidden drawer, an empty slot opens the PIN lock settings
+                    ShowHiddenGamesPinOptions();
+                }
+                else {
                     // No new folders/homebrew inside the hidden drawer; from the main grid you can open it
                     std::vector<std::string> new_entry_options = { GetLanguageString("menu_new_folder"), GetLanguageString("menu_add_hb") };
                     const auto has_hidden_opt = this->entry_menu->IsInRoot();
@@ -327,9 +434,11 @@ namespace ul::menu::ui {
 
                     const auto option = g_MenuApplication->DisplayDialog(GetLanguageString("menu_new_entry"), GetLanguageString("menu_new_entry_conf"), new_entry_options, true);
                     if(has_hidden_opt && (option == hidden_opt)) {
-                        this->PushFolder(GetLanguageString("menu_hidden_games"));
-                        this->MoveTo(GetActiveHiddenMenuPath(), true);
-                        this->cur_path_text->SetText(this->cur_folder_path);
+                        if(UnlockHiddenGames()) {
+                            this->PushFolder(GetLanguageString("menu_hidden_games"));
+                            this->MoveTo(GetActiveHiddenMenuPath(), true);
+                            this->cur_path_text->SetText(this->cur_folder_path);
+                        }
                     }
                     else if(option == 0) {
                         SwkbdConfig swkbd;
@@ -946,7 +1055,10 @@ namespace ul::menu::ui {
                     this->input_bar->AddSetInput(HidNpadButton_B, GetLanguageString("input_cancel_selection"));
                     this->input_bar->AddSetInput(HidNpadButton_X, GetLanguageString("input_cancel_selection"));
                 }
-                else if(!this->entry_menu->IsInHiddenView()) {
+                else if(this->entry_menu->IsInHiddenView()) {
+                    this->input_bar->AddSetInput(HidNpadButton_A, GetLanguageString("input_hidden_pin"));
+                }
+                else {
                     this->input_bar->AddSetInput(HidNpadButton_A, GetLanguageString("input_new_entry"));
                 }
             }

@@ -1,6 +1,8 @@
 #include <ul/fs/fs_Stdio.hpp>
 #include <ul/cfg/cfg_Config.hpp>
 #include <ul/util/util_Json.hpp>
+#include <ul/util/util_String.hpp>
+#include <ul/menu/menu_Entries.hpp>
 #include <ul/menu/ui/ui_MenuApplication.hpp>
 #include <ul/util/util_Size.hpp>
 #include <ul/net/net_Service.hpp>
@@ -300,6 +302,19 @@ int main() {
 
     // Information sent as an extra storage to uMenu
     UL_RC_ASSERT(ul::menu::am::ReadFromInputStorage(&g_GlobalSettings.system_status, sizeof(g_GlobalSettings.system_status)));
+
+    // uMenu restarts after every game/applet and reopens the last folder. If that was a PIN-locked hidden games
+    // drawer, go back to the main grid instead, so closing a game never leaves the hidden games unlocked.
+    if(accountUidIsValid(&g_GlobalSettings.system_status.selected_user)) {
+        const auto menu_path = ul::menu::MakeMenuPath(g_GlobalSettings.ams_is_emummc, g_GlobalSettings.system_status.selected_user);
+        const auto hidden_path = ul::menu::MakeHiddenMenuPath(menu_path);
+        const std::string last_fs_path = g_GlobalSettings.system_status.last_menu_fs_path;
+        if(last_fs_path.starts_with(hidden_path) && ul::menu::HasHiddenGamesPin(menu_path)) {
+            ul::util::CopyToStringBuffer(g_GlobalSettings.system_status.last_menu_fs_path, menu_path);
+            ul::util::CopyToStringBuffer(g_GlobalSettings.system_status.last_menu_path, "");
+            g_GlobalSettings.system_status.last_menu_index = 0;
+        }
+    }
     g_GlobalSettings.initial_last_menu_index = g_GlobalSettings.system_status.last_menu_index;
     g_GlobalSettings.initial_last_menu_fs_path = g_GlobalSettings.system_status.last_menu_fs_path;
     UL_LOG_INFO("Start mode: %d, last path: '%s', last fs path: '%s', last menu index: %d", (u32)g_StartMode, g_GlobalSettings.system_status.last_menu_path, g_GlobalSettings.system_status.last_menu_fs_path, g_GlobalSettings.system_status.last_menu_index);

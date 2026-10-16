@@ -503,6 +503,70 @@ namespace ul::menu {
         }
     }
 
+    namespace {
+
+        constexpr size_t HiddenGamesPinSaltSize = 16;
+
+        // Not a ".m.json" file, so the menu never mistakes it for an entry
+        inline std::string MakeHiddenGamesPinPath(const std::string &menu_path) {
+            return fs::JoinPath(menu_path, "hidden_lock.json");
+        }
+
+        std::string ToHex(const u8 *data, const size_t size) {
+            static constexpr char HexChars[] = "0123456789abcdef";
+            std::string out;
+            out.reserve(size * 2);
+            for(size_t i = 0; i < size; i++) {
+                out.push_back(HexChars[data[i] >> 4]);
+                out.push_back(HexChars[data[i] & 0xF]);
+            }
+            return out;
+        }
+
+        // SHA-256 of (salt + PIN). The random salt means two users with the same PIN get different hashes.
+        std::string HashPin(const std::string &salt_hex, const std::string &pin) {
+            const auto salted = salt_hex + pin;
+            u8 hash[SHA256_HASH_SIZE] = {};
+            sha256CalculateHash(hash, salted.data(), salted.size());
+            return ToHex(hash, sizeof(hash));
+        }
+
+    }
+
+    bool HasHiddenGamesPin(const std::string &menu_path) {
+        return fs::ExistsFile(MakeHiddenGamesPinPath(menu_path));
+    }
+
+    void SetHiddenGamesPin(const std::string &menu_path, const std::string &pin) {
+        u8 salt[HiddenGamesPinSaltSize] = {};
+        randomGet(salt, sizeof(salt));
+        const auto salt_hex = ToHex(salt, sizeof(salt));
+
+        auto lock_json = util::JSON::object();
+        lock_json["salt"] = salt_hex;
+        lock_json["hash"] = HashPin(salt_hex, pin);
+        util::SaveJSON(MakeHiddenGamesPinPath(menu_path), lock_json);
+    }
+
+    bool CheckHiddenGamesPin(const std::string &menu_path, const std::string &pin) {
+        util::JSON lock_json;
+        if(R_FAILED(util::LoadJSONFromFile(lock_json, MakeHiddenGamesPinPath(menu_path)))) {
+            // A damaged lock file shouldn't lock a parent out forever: treat as wrong, they can delete it from a PC
+            return false;
+        }
+
+        const auto salt_hex = lock_json.value("salt", "");
+        const auto hash_hex = lock_json.value("hash", "");
+        if(salt_hex.empty() || hash_hex.empty()) {
+            return false;
+        }
+        return HashPin(salt_hex, pin) == hash_hex;
+    }
+
+    void RemoveHiddenGamesPin(const std::string &menu_path) {
+        fs::DeleteFile(MakeHiddenGamesPinPath(menu_path));
+    }
+
     std::vector<Entry> LoadEntries(const std::string &path) {
         EnsureApplicationRecordsAndViews();
 
