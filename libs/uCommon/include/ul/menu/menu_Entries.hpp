@@ -13,6 +13,16 @@ namespace ul::menu {
         return fs::JoinPath(RootPath, dir);
     }
 
+    // Per-user hidden games: each user's menu folder gets a "hidden" subfolder.
+    // Game entries moved in there stay "known" to uLaunch (so the background sync
+    // won't re-add them to the grid), but the main grid never shows them.
+    // User-made folders are always named "folder_<name>_<n>", so "hidden" can't clash.
+    constexpr const char HiddenMenuDirName[] = "hidden";
+
+    inline std::string MakeHiddenMenuPath(const std::string &menu_path) {
+        return fs::JoinPath(menu_path, HiddenMenuDirName);
+    }
+
     enum class EntryType : u32 {
         Invalid,
         Application,
@@ -144,6 +154,10 @@ namespace ul::menu {
     void InitializeEntries(const bool is_emummc, const AccountUid &uid);
     std::vector<Entry> LoadEntries(const std::string &path);
     const std::string &GetActiveMenuPath();
+
+    inline std::string GetActiveHiddenMenuPath() {
+        return MakeHiddenMenuPath(GetActiveMenuPath());
+    }
 
     void SetControlEntryLoadFunction(ControlEntryLoadFunction func);
     

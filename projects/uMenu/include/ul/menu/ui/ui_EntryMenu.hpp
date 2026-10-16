@@ -213,6 +213,7 @@ namespace ul::menu::ui {
             }
 
             bool IsInRoot();
+            bool IsInHiddenView();
 
             inline bool IsMenuStart() {
                 return this->base_entry_idx_x == 0;

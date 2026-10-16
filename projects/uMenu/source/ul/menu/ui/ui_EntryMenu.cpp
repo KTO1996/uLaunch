@@ -278,6 +278,10 @@ namespace ul::menu::ui {
         return this->cur_path.length() == GetActiveMenuPath().length();
     }
 
+    bool EntryMenu::IsInHiddenView() {
+        return this->cur_path == GetActiveHiddenMenuPath();
+    }
+
     void EntryMenu::OnRender(pu::ui::render::Renderer::Ref &drawer, const s32 x, const s32 y) {
         const auto time_start = std::chrono::steady_clock::now();
 

@@ -495,6 +495,12 @@ namespace ul::menu {
 
             InitializeRemainingEntries(g_ApplicationRecords, entry_idx);
         }
+
+        // Make sure this user's hidden-games drawer exists (also covers menus made before this feature)
+        const auto hidden_path = MakeHiddenMenuPath(g_ActiveMenuPath);
+        if(!fs::ExistsDirectory(hidden_path)) {
+            fs::CreateDirectory(hidden_path);
+        }
     }
 
     std::vector<Entry> LoadEntries(const std::string &path) {

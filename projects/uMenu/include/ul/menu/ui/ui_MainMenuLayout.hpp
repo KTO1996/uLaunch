@@ -162,6 +162,16 @@ namespace ul::menu::ui {
                 this->entry_menu->OrganizeUpdateEntries();
             }
 
+            // Moves a game into this user's hidden drawer (it disappears from the grid, nothing is uninstalled)
+            inline void HideEntry(const Entry &entry) {
+                Entry entry_copy(entry);
+                entry_copy.MoveTo(GetActiveHiddenMenuPath());
+                pu::audio::PlaySfx(this->entry_move_into_sfx);
+                this->StopSelection();
+                this->entry_menu->NotifyEntryRemoved(entry);
+                this->entry_menu->OrganizeUpdateEntries();
+            }
+
             inline void RemoveEntry(const Entry &entry) {
                 Entry entry_copy(entry);
                 // New entries moved outside if the removed entry is a folder

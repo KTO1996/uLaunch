@@ -315,9 +315,23 @@ namespace ul::menu::ui {
                         // Should not happen...
                     }
                 }
-                else {
-                    const auto option = g_MenuApplication->DisplayDialog(GetLanguageString("menu_new_entry"), GetLanguageString("menu_new_entry_conf"), { GetLanguageString("menu_new_folder"), GetLanguageString("menu_add_hb"), GetLanguageString("cancel") }, true);
-                    if(option == 0) {
+                else if(!this->entry_menu->IsInHiddenView()) {
+                    // No new folders/homebrew inside the hidden drawer; from the main grid you can open it
+                    std::vector<std::string> new_entry_options = { GetLanguageString("menu_new_folder"), GetLanguageString("menu_add_hb") };
+                    const auto has_hidden_opt = this->entry_menu->IsInRoot();
+                    const s32 hidden_opt = new_entry_options.size();
+                    if(has_hidden_opt) {
+                        new_entry_options.push_back(GetLanguageString("menu_hidden_games"));
+                    }
+                    new_entry_options.push_back(GetLanguageString("cancel"));
+
+                    const auto option = g_MenuApplication->DisplayDialog(GetLanguageString("menu_new_entry"), GetLanguageString("menu_new_entry_conf"), new_entry_options, true);
+                    if(has_hidden_opt && (option == hidden_opt)) {
+                        this->PushFolder(GetLanguageString("menu_hidden_games"));
+                        this->MoveTo(GetActiveHiddenMenuPath(), true);
+                        this->cur_path_text->SetText(this->cur_folder_path);
+                    }
+                    else if(option == 0) {
                         SwkbdConfig swkbd;
                         UL_RC_ASSERT(swkbdCreate(&swkbd, 0));
                         swkbdConfigMakePresetDefault(&swkbd);
@@ -445,7 +459,9 @@ namespace ul::menu::ui {
                             app_take_over_opt = cur_option_idx; cur_option_idx++;
                         }
 
-                        const auto has_non_root_opts = !this->entry_menu->IsInRoot();
+                        // Inside the hidden-games view the only placement option is "unhide"
+                        const auto in_hidden_view = this->entry_menu->IsInHiddenView();
+                        const auto has_non_root_opts = !this->entry_menu->IsInRoot() && !in_hidden_view;
                         s32 entry_move_parent_opt = -1;
                         s32 entry_move_root_opt = -1;
                         if(has_non_root_opts) {
@@ -454,6 +470,10 @@ namespace ul::menu::ui {
                             options.push_back(GetLanguageString("entry_move_root"));
                             entry_move_root_opt = cur_option_idx; cur_option_idx++;
                         }
+
+                        // Per-user visibility: hide from this user's grid, or bring a hidden game back
+                        options.push_back(GetLanguageString(in_hidden_view ? "entry_unhide" : "entry_hide"));
+                        const s32 entry_visibility_opt = cur_option_idx; cur_option_idx++;
 
                         options.push_back(GetLanguageString("cancel"));
 
@@ -470,6 +490,17 @@ namespace ul::menu::ui {
                         }
                         if(has_non_root_opts && (option == entry_move_root_opt)) {
                             this->MoveEntryToRoot(cur_entry);
+                        }
+                        if(option == entry_visibility_opt) {
+                            if(in_hidden_view) {
+                                // Unhiding = moving it back to the first free slot of the main grid
+                                this->MoveEntryToRoot(cur_entry);
+                                g_MenuApplication->ShowNotification(GetLanguageString("entry_unhide_ok"));
+                            }
+                            else {
+                                this->HideEntry(cur_entry);
+                                g_MenuApplication->ShowNotification(GetLanguageString("entry_hide_ok"));
+                            }
                         }
                     }
                     else if(cur_entry.IsSpecial()) {
@@ -915,7 +946,7 @@ namespace ul::menu::ui {
                     this->input_bar->AddSetInput(HidNpadButton_B, GetLanguageString("input_cancel_selection"));
                     this->input_bar->AddSetInput(HidNpadButton_X, GetLanguageString("input_cancel_selection"));
                 }
-                else {
+                else if(!this->entry_menu->IsInHiddenView()) {
                     this->input_bar->AddSetInput(HidNpadButton_A, GetLanguageString("input_new_entry"));
                 }
             }

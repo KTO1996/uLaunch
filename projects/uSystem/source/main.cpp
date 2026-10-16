@@ -405,6 +405,13 @@ namespace {
 
         LocateApplicationAndSpecialEntries(menu_path, existing_app_entries, rem_special_entry_mask);
 
+        // Games this user has hidden still count as existing, otherwise they'd be re-added to the grid below
+        const auto hidden_menu_path = ul::menu::MakeHiddenMenuPath(menu_path);
+        if(ul::fs::ExistsDirectory(hidden_menu_path)) {
+            u32 hidden_special_entry_mask = 0;
+            LocateApplicationAndSpecialEntries(hidden_menu_path, existing_app_entries, hidden_special_entry_mask);
+        }
+
         // Ensure all special entries exist
         #define _CHECK_HAS_SPECIAL_ENTRY(type) { \
             if((rem_special_entry_mask & BITL(static_cast<u32>(type))) != 0) { \
@@ -1375,6 +1382,12 @@ namespace {
                         for(const auto &uid: uids) {
                             const auto menu_path = ul::menu::MakeMenuPath(g_AmsIsEmuMMC, uid);
                             ul::menu::DeleteApplicationEntryRecursively(record.id, menu_path);
+
+                            // Also clean it out of this user's hidden games
+                            const auto hidden_menu_path = ul::menu::MakeHiddenMenuPath(menu_path);
+                            if(ul::fs::ExistsDirectory(hidden_menu_path)) {
+                                ul::menu::DeleteApplicationEntryRecursively(record.id, hidden_menu_path);
+                            }
                         }
                     }
 
